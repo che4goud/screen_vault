@@ -1,0 +1,4 @@
+watchdog==4.0.0              # FSEvents-backed file watcher on macOS
+requests==2.31.0
+click==8.1.7
+python-dotenv==1.0.1
