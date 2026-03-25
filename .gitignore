@@ -1,0 +1,17 @@
+# User-defined ignores for the entire project
+.env
+.env.local
+.env.*
+.DS_Store
+__pycache__/
+*.pyc
+venv/
+.venv/
+node_modules/
+.next/
+dist/
+build/
+*.db
+*.sqlite
+storage/
+brain/
