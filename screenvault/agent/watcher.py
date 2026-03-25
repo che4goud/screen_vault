@@ -88,6 +88,9 @@ def start():
         print("[watcher] ERROR: SCREENVAULT_USER_ID is not set. Run 'screenvault login' first.")
         return
 
+    # Ensure the watch directory exists (creates it on first run / new device)
+    os.makedirs(WATCH_DIR, exist_ok=True)
+
     print(f"[watcher] Watching {WATCH_DIR}")
     print(f"[watcher] Backend: {BACKEND_URL}")
     print(f"[watcher] User: {USER_ID}")
