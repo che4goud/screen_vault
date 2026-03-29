@@ -1,5 +1,7 @@
 "use client"
 
+import { Search, X, Loader2 } from "lucide-react"
+
 interface Props {
   value: string
   onChange: (v: string) => void
@@ -8,39 +10,33 @@ interface Props {
 
 export default function SearchBar({ value, onChange, isLoading }: Props) {
   return (
-    <div className="relative w-full max-w-2xl">
-      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-        {isLoading ? (
-          <svg className="h-5 w-5 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-          </svg>
-        ) : (
-          <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-          </svg>
+    <div className="relative w-full max-w-xl mx-auto group">
+      <div className="glass flex items-center rounded-[24px] px-6 py-4 shadow-xl shadow-black/5 hover:shadow-2xl hover:shadow-black/10 transition-all duration-300">
+        <div className="mr-4 flex items-center justify-center">
+          {isLoading ? (
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          ) : (
+            <Search className="h-6 w-6 text-gray-400 group-focus-within:text-gray-600 transition-colors" />
+          )}
+        </div>
+        
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Search all photos..."
+          className="flex-1 bg-transparent border-none text-[18px] text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-0 w-full font-light"
+        />
+
+        {value && (
+          <button
+            onClick={() => onChange("")}
+            className="ml-4 p-1 rounded-full hover:bg-gray-100/50 text-gray-400 hover:text-gray-600 transition-all"
+          >
+            <X className="h-5 w-5" />
+          </button>
         )}
       </div>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="Search screenshots... (try 'invoice', 'zoom call', 'figma')"
-        className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-12 pr-4 text-sm
-                   shadow-sm placeholder:text-gray-400 focus:border-indigo-400 focus:outline-none
-                   focus:ring-2 focus:ring-indigo-100"
-      />
-      {value && (
-        <button
-          onClick={() => onChange("")}
-          className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-400 hover:text-gray-600"
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      )}
     </div>
   )
 }

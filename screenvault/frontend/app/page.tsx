@@ -2,12 +2,12 @@
 
 import { useState, useCallback } from "react"
 import useSWR from "swr"
+import { RotateCcw } from "lucide-react"
 
 import SearchBar from "@/components/SearchBar"
-import FilterSidebar from "@/components/FilterSidebar"
 import ResultsGrid from "@/components/ResultsGrid"
 import ImageModal from "@/components/ImageModal"
-import { searchScreenshots, parseTags } from "@/lib/api"
+import { searchScreenshots, getAllScreenshots, parseTags } from "@/lib/api"
 import { useDebounce } from "@/lib/useDebounce"
 import type { Filters, Screenshot, SearchResponse } from "@/types"
 
@@ -21,9 +21,15 @@ export default function Home() {
 
   const debouncedQuery = useDebounce(query, 400)
 
-  const { data, isLoading, error } = useSWR<SearchResponse>(
-    debouncedQuery ? ["search", debouncedQuery, page, filters] : null,
-    () => searchScreenshots(debouncedQuery, page, filters),
+  const isSearching = debouncedQuery.length > 0
+
+  const { data, isLoading, error, mutate } = useSWR<SearchResponse>(
+    isSearching
+      ? ["search", debouncedQuery, page, filters]
+      : ["all", page],
+    () => isSearching
+      ? searchScreenshots(debouncedQuery, page, filters)
+      : getAllScreenshots(page),
     { keepPreviousData: true }
   )
 
@@ -44,54 +50,103 @@ export default function Home() {
   const totalPages = data ? Math.ceil(data.total / data.per_page) : 0
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white px-6 py-4 shadow-sm">
-        <div className="mx-auto flex max-w-7xl items-center gap-6">
-          <span className="shrink-0 text-xl font-bold text-indigo-600">ScreenVault</span>
-          <SearchBar
-            value={query}
-            onChange={handleQueryChange}
-            isLoading={isLoading && !!debouncedQuery}
-          />
+    <div className="min-h-screen bg-[#fdfdfd] selection:bg-black selection:text-white">
+      <main className="mx-auto max-w-[1400px] px-6 pt-16 pb-24">
+        {/* Header Section: Search & Filters */}
+        <div className="flex flex-col items-center gap-8 mb-16">
+          <div className="w-full max-w-2xl px-4">
+            <SearchBar
+              value={query}
+              onChange={handleQueryChange}
+              isLoading={isLoading && !!debouncedQuery}
+            />
+          </div>
+
+          <div className="flex flex-col items-center gap-6">
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button 
+                onClick={() => handleFiltersChange(EMPTY_FILTERS)}
+                className={`glass px-6 py-2 rounded-full text-[14px] font-medium transition-all ${
+                  !filters.tag && !filters.dateFrom ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-600'
+                }`}
+              >
+                All
+              </button>
+              
+              {["Favorites", "Recent", "Screenshots", "Videos"].map(label => (
+                <button
+                  key={label}
+                  className="glass px-6 py-2 rounded-full text-[14px] font-medium text-gray-600 hover:bg-gray-100 transition-all border-none"
+                >
+                  {label}
+                </button>
+              ))}
+
+              {allTags.map(tag => (
+                <button
+                  key={tag}
+                  onClick={() => handleFiltersChange({...filters, tag: filters.tag === tag ? "" : tag})}
+                  className={`glass px-6 py-2 rounded-full text-[14px] font-medium transition-all ${
+                    filters.tag === tag ? 'bg-black text-white border-transparent' : 'hover:bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+
+            <button 
+              onClick={() => mutate()}
+              className="p-3 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-900 transition-all"
+            >
+              <RotateCcw className={`h-6 w-6 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
-      </header>
 
-      <main className="mx-auto flex max-w-7xl gap-8 px-6 py-8">
-        <FilterSidebar
-          filters={filters}
-          onChange={handleFiltersChange}
-          allTags={allTags}
-        />
-
-        <div className="min-w-0 flex-1">
+        <div className="relative">
           {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            <div className="mx-auto max-w-2xl mb-12 glass border-red-100 bg-red-50/50 px-8 py-4 rounded-2xl text-[14px] text-red-600">
               {error.message}
             </div>
           )}
+          
           <ResultsGrid
             results={data?.results ?? []}
             total={data?.total ?? 0}
             query={debouncedQuery}
-            isLoading={isLoading && !!debouncedQuery}
+            isLoading={isLoading}
             onSelect={setSelected}
           />
+
           {totalPages > 1 && (
-            <div className="mt-8 flex items-center justify-center gap-2">
+            <div className="mt-20 flex items-center justify-center gap-8">
               <button
                 disabled={page === 1}
-                onClick={() => setPage((p) => p - 1)}
-                className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => {
+                  setPage((p) => p - 1)
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
+                className="glass p-3 rounded-full disabled:opacity-30 disabled:pointer-events-none hover:bg-white"
               >
-                Previous
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
               </button>
-              <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
+              <span className="text-[14px] font-medium text-gray-400 tracking-widest uppercase">
+                {page} / {totalPages}
+              </span>
               <button
                 disabled={page === totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => {
+                  setPage((p) => p + 1)
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
+                className="glass p-3 rounded-full disabled:opacity-30 disabled:pointer-events-none hover:bg-white"
               >
-                Next
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19l7-7-7-7" />
+                </svg>
               </button>
             </div>
           )}

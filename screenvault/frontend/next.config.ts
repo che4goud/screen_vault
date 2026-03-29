@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: "/Users/prathvi/Documents/ss_desc/screenvault",
   images: {
     remotePatterns: [
       {

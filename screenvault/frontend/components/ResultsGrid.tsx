@@ -2,6 +2,7 @@
 
 import type { Screenshot } from "@/types"
 import ScreenshotCard from "./ScreenshotCard"
+import { Loader2, Image as ImageIcon } from "lucide-react"
 
 interface Props {
   results: Screenshot[]
@@ -12,50 +13,60 @@ interface Props {
 }
 
 export default function ResultsGrid({ results, total, query, isLoading, onSelect }: Props) {
-  if (isLoading) {
+  if (isLoading && results.length === 0) {
     return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="h-52 animate-pulse rounded-xl bg-gray-100" />
+      <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {Array.from({ length: 15 }).map((_, i) => (
+          <div key={i} className="aspect-[3/4] animate-pulse rounded-[24px] bg-gray-100" />
         ))}
       </div>
     )
   }
 
-  if (!query) {
+  // Only show if no query and NO results (fresh vault)
+  if (!query && results.length === 0 && !isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <svg className="mb-4 h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14
-               M8 10h.01M3 5h18a1 1 0 011 1v12a1 1 0 01-1 1H3a1 1 0 01-1-1V6a1 1 0 011-1z" />
-        </svg>
-        <p className="text-gray-400">Type to search your screenshots</p>
-        <p className="mt-1 text-sm text-gray-300">Try "invoice", "meeting notes", or "login page"</p>
+      <div className="flex flex-col items-center justify-center py-32 text-center">
+        <div className="glass p-6 rounded-full mb-8">
+          <ImageIcon className="h-10 w-10 text-gray-300" />
+        </div>
+        <p className="text-[18px] font-medium text-gray-400">Vault is empty</p>
+        <p className="mt-2 text-[14px] text-gray-300">Nothing captured yet, keep vaulting!</p>
       </div>
     )
   }
 
-  if (results.length === 0) {
+  // Show "No matches" only if we ARE searching and found 0
+  if (results.length === 0 && query && !isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <p className="text-gray-500">No results for <span className="font-medium">"{query}"</span></p>
-        <p className="mt-1 text-sm text-gray-400">Try different keywords or check your filters</p>
+      <div className="flex flex-col items-center justify-center py-32 text-center">
+        <p className="text-[18px] font-medium text-gray-500">No matches for "{query}"</p>
+        <p className="mt-2 text-[14px] text-gray-400">Try adjusting your search or filters</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-gray-500">
-        {total} result{total !== 1 ? "s" : ""} for{" "}
-        <span className="font-medium text-gray-700">"{query}"</span>
-      </p>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="space-y-12">
+      <div className="flex items-center justify-center">
+        <p className="text-[14px] font-medium text-gray-400 tracking-widest uppercase bg-gray-50 px-4 py-1 rounded-full">
+          {query ? `${total} Visuals Found` : `Recent Visuals`}
+        </p>
+      </div>
+      
+      <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-8 space-y-8">
         {results.map((s) => (
-          <ScreenshotCard key={s.id} screenshot={s} onClick={onSelect} />
+          <div key={s.id} className="break-inside-avoid">
+            <ScreenshotCard screenshot={s} onClick={onSelect} />
+          </div>
         ))}
       </div>
+
+      {isLoading && (
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-gray-300" />
+        </div>
+      )}
     </div>
   )
 }
