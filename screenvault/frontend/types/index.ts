@@ -18,7 +18,11 @@ export interface SearchResponse {
   page: number
   per_page: number
   results: Screenshot[]
-  summary?: string  // LLM-generated summary of top results (hybrid search)
+  summary?: string
+}
+
+export interface SummaryResponse {
+  summary: string
 }
 
 export interface Filters {

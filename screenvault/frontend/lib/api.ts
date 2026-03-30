@@ -1,4 +1,4 @@
-import type { SearchResponse } from "@/types"
+import type { SearchResponse, SummaryResponse } from "@/types"
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
@@ -36,6 +36,15 @@ export async function searchScreenshots(
     throw new Error(err.detail ?? `Search failed: ${res.status}`)
   }
 
+  return res.json()
+}
+
+export async function fetchSummary(query: string): Promise<SummaryResponse> {
+  const params = new URLSearchParams({ q: query })
+  const res = await fetch(`${BASE_URL}/summary?${params}`, {
+    headers: { "X-User-Id": USER_ID },
+  })
+  if (!res.ok) return { summary: "" }
   return res.json()
 }
 

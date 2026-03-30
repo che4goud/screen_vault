@@ -90,6 +90,9 @@ class IngestionQueue:
                 )
                 self._stats["processed"] += 1
                 print(f"[worker] Done: {job.src_path} → id={result['id']}")
+                # Invalidate screenshot embedding cache so next search picks up new data
+                from routes.search import invalidate_screenshot_cache
+                invalidate_screenshot_cache(job.user_id)
             except Exception:
                 self._stats["failed"] += 1
                 print(f"[worker] Failed: {job.src_path}")

@@ -1,204 +1,75 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
-import useSWR from "swr"
-import { RotateCcw, Sparkles } from "lucide-react"
+import Link from "next/link"
+import Image from "next/image"
 
-import SearchBar from "@/components/SearchBar"
-import ResultsGrid from "@/components/ResultsGrid"
-import ImageModal from "@/components/ImageModal"
-import { searchScreenshots, getAllScreenshots, parseTags, syncScreenshots } from "@/lib/api"
-import { useDebounce } from "@/lib/useDebounce"
-import type { Filters, Screenshot, SearchResponse } from "@/types"
-
-const EMPTY_FILTERS: Filters = { dateFrom: "", dateTo: "", tag: "" }
-
-export default function Home() {
-  const [query, setQuery] = useState("")
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
-  const [page, setPage] = useState(1)
-  const [selected, setSelected] = useState<Screenshot | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const processingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const prevTotal = useRef<number>(0)
-
-  const debouncedQuery = useDebounce(query, 400)
-
-  const isSearching = debouncedQuery.length > 0
-
-  const { data, isLoading, error, mutate } = useSWR<SearchResponse>(
-    isSearching
-      ? ["search", debouncedQuery, page, filters]
-      : ["all", page],
-    () => isSearching
-      ? searchScreenshots(debouncedQuery, page, filters)
-      : getAllScreenshots(page),
-    { keepPreviousData: true, refreshInterval: isProcessing ? 3000 : 0 }
-  )
-
-  // On mount: scan watch folder and enqueue new screenshots
-  useEffect(() => {
-    syncScreenshots()
-      .then(({ queued }) => {
-        if (queued > 0) {
-          setIsProcessing(true)
-          // Safety cap: stop polling after 90 seconds
-          processingTimer.current = setTimeout(() => setIsProcessing(false), 90_000)
-        }
-      })
-      .catch(() => {})
-    return () => { if (processingTimer.current) clearTimeout(processingTimer.current) }
-  }, [])
-
-  // Stop polling once new results appear in the grid
-  useEffect(() => {
-    if (!isProcessing) return
-    const total = data?.total ?? 0
-    if (total > prevTotal.current) {
-      prevTotal.current = total
-      if (processingTimer.current) clearTimeout(processingTimer.current)
-      // Poll a little longer to catch any remaining items, then stop
-      processingTimer.current = setTimeout(() => setIsProcessing(false), 6000)
-    }
-  }, [data?.total, isProcessing])
-
-  const handleQueryChange = useCallback((v: string) => {
-    setQuery(v)
-    setPage(1)
-  }, [])
-
-  const handleFiltersChange = useCallback((f: Filters) => {
-    setFilters(f)
-    setPage(1)
-  }, [])
-
-  const allTags = Array.from(
-    new Set((data?.results ?? []).flatMap((r) => parseTags(r.tags)))
-  )
-
-  const totalPages = data ? Math.ceil(data.total / data.per_page) : 0
-
+export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#fdfdfd] selection:bg-black selection:text-white">
-      <main className="mx-auto max-w-[1400px] px-6 pt-16 pb-24">
-        {/* Header Section: Search & Filters */}
-        <div className="flex flex-col items-center gap-8 mb-16">
-          <div className="w-full max-w-2xl px-4">
-            <SearchBar
-              value={query}
-              onChange={handleQueryChange}
-              isLoading={isLoading && !!debouncedQuery}
+    <div className="min-h-screen bg-[#fdfdfd] text-[#1c1c1c] selection:bg-black selection:text-white flex flex-col overflow-hidden relative">
+      
+      {/* Decorative Blur Orbs for purely 3D soft lighting effect */}
+      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-100/40 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-gray-100/60 rounded-full blur-[150px] pointer-events-none" />
+
+      {/* Minimalism Header */}
+      <header className="w-full px-8 py-10 md:px-16 flex items-center justify-between z-10">
+        <div className="flex items-baseline tracking-tighter cursor-default">
+          <span className="text-4xl font-extrabold lowercase">screenvault</span>
+          <span className="text-4xl font-extrabold text-blue-500">.</span>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="flex-1 w-full max-w-[1600px] mx-auto flex flex-col lg:flex-row items-center justify-between px-8 md:px-16 lg:px-24 z-10">
+        
+        {/* Left Typography Block */}
+        <div className="w-full lg:w-1/2 flex flex-col justify-center gap-10 lg:pr-12 pt-12 lg:pt-0">
+          <h1 className="text-6xl md:text-8xl font-black lowercase tracking-tighter leading-[0.9] text-black">
+            visual<br />
+            memory,<br />
+            <span className="text-gray-300">perfected.</span>
+          </h1>
+
+          <p className="text-xl md:text-2xl font-light text-gray-500 max-w-md leading-relaxed">
+            The intelligent storage for your screenshots. Search by text, concept, or context in milliseconds.
+          </p>
+
+          <div className="pt-4 flex flex-col sm:flex-row items-center gap-6">
+            <Link 
+              href="/vault"
+              className="group relative inline-flex items-center justify-center px-10 py-5 font-bold text-white bg-black rounded-full overflow-hidden transition-all hover:scale-105 active:scale-95 shadow-2xl hover:shadow-black/20"
+            >
+              <span className="absolute inset-0 w-full h-full bg-gradient-to-tr from-transparent via-white/20 to-transparent translate-x-[-150%] skew-x-[-45deg] group-hover:translate-x-[150%] transition-transform duration-700 pointer-events-none" />
+              <span className="text-[16px] tracking-wide">Enter Vault</span>
+              <svg className="w-5 h-5 ml-3 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </Link>
+
+            <span className="text-sm font-medium text-gray-400">
+              Free forever. Local-first.
+            </span>
+          </div>
+        </div>
+
+        {/* Right 3D Visual Block */}
+        <div className="w-full lg:w-1/2 flex justify-center items-center mt-20 lg:mt-0 relative">
+          <div className="relative w-full max-w-[700px] aspect-square animate-float flex items-center justify-center">
+            {/* Soft shadow underneath the floating object */}
+            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[60%] h-8 bg-black/5 rounded-[100%] blur-xl animate-pulse-shadow pointer-events-none" />
+            
+            <Image
+              src="/3d-vault.png"
+              alt="3D Minimal Vault"
+              fill
+              className="object-contain drop-shadow-2xl scale-110 lg:scale-125 select-none pointer-events-none"
+              priority
             />
           </div>
-
-          <div className="flex flex-col items-center gap-6">
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <button 
-                onClick={() => handleFiltersChange(EMPTY_FILTERS)}
-                className={`glass px-6 py-2 rounded-full text-[14px] font-medium transition-all ${
-                  !filters.tag && !filters.dateFrom ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-600'
-                }`}
-              >
-                All
-              </button>
-              
-              {["Favorites", "Recent", "Screenshots", "Videos"].map(label => (
-                <button
-                  key={label}
-                  className="glass px-6 py-2 rounded-full text-[14px] font-medium text-gray-600 hover:bg-gray-100 transition-all border-none"
-                >
-                  {label}
-                </button>
-              ))}
-
-              {allTags.map(tag => (
-                <button
-                  key={tag}
-                  onClick={() => handleFiltersChange({...filters, tag: filters.tag === tag ? "" : tag})}
-                  className={`glass px-6 py-2 rounded-full text-[14px] font-medium transition-all ${
-                    filters.tag === tag ? 'bg-black text-white border-transparent' : 'hover:bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-3">
-              {isProcessing && (
-                <span className="text-[12px] text-gray-400 animate-pulse">
-                  Processing new screenshots…
-                </span>
-              )}
-              <button
-                onClick={() => mutate()}
-                className="p-3 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-900 transition-all"
-              >
-                <RotateCcw className={`h-6 w-6 ${isLoading || isProcessing ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-          </div>
         </div>
 
-        <div className="relative">
-          {error && (
-            <div className="mx-auto max-w-2xl mb-12 glass border-red-100 bg-red-50/50 px-8 py-4 rounded-2xl text-[14px] text-red-600">
-              {error.message}
-            </div>
-          )}
-          
-          {isSearching && data?.summary && (
-            <div className="mx-auto max-w-2xl glass px-8 py-5 rounded-2xl border border-gray-100 mb-8">
-              <div className="flex items-start gap-3">
-                <Sparkles className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
-                <p className="text-[14px] text-gray-600 leading-relaxed">{data.summary}</p>
-              </div>
-            </div>
-          )}
-
-          <ResultsGrid
-            results={data?.results ?? []}
-            total={data?.total ?? 0}
-            query={debouncedQuery}
-            isLoading={isLoading}
-            onSelect={setSelected}
-          />
-
-          {totalPages > 1 && (
-            <div className="mt-20 flex items-center justify-center gap-8">
-              <button
-                disabled={page === 1}
-                onClick={() => {
-                  setPage((p) => p - 1)
-                  window.scrollTo({ top: 0, behavior: 'smooth' })
-                }}
-                className="glass p-3 rounded-full disabled:opacity-30 disabled:pointer-events-none hover:bg-white"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <span className="text-[14px] font-medium text-gray-400 tracking-widest uppercase">
-                {page} / {totalPages}
-              </span>
-              <button
-                disabled={page === totalPages}
-                onClick={() => {
-                  setPage((p) => p + 1)
-                  window.scrollTo({ top: 0, behavior: 'smooth' })
-                }}
-                className="glass p-3 rounded-full disabled:opacity-30 disabled:pointer-events-none hover:bg-white"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19l7-7-7-7" />
-                </svg>
-              </button>
-            </div>
-          )}
-        </div>
       </main>
 
-      <ImageModal screenshot={selected} onClose={() => setSelected(null)} />
     </div>
   )
 }

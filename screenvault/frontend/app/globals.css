@@ -11,6 +11,19 @@
 @theme {
   --font-sans: var(--font-outfit), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --color-glass: var(--glass-bg);
+
+  --animate-float: float 8s ease-in-out infinite;
+  --animate-pulse-shadow: pulse-shadow 8s ease-in-out infinite;
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0) scale(1.15); }
+    50% { transform: translateY(-30px) scale(1.15); }
+  }
+
+  @keyframes pulse-shadow {
+    0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.08; }
+    50% { transform: translateX(-50%) scale(0.8); opacity: 0.03; }
+  }
 }
 
 @layer base {
