@@ -4,7 +4,9 @@ routes/organise.py — GET /organise
 Clusters the user's screenshot library by semantic similarity using
 k-means over the stored embeddings, then names each cluster with Gemini.
 
-Number of clusters: max(2, min(8, n_screenshots // 5))
+Number of clusters: chosen automatically via the elbow method — k is
+increased until each additional cluster contributes less than 10% of the
+total possible inertia reduction. No min/max cluster size is enforced.
 Clustering: pure-numpy k-means (no sklearn dependency)
 Naming: Gemini 2.5 Flash given the top descriptions per cluster
 """
@@ -50,6 +52,53 @@ def _kmeans(vecs: np.ndarray, k: int, iterations: int = 25) -> np.ndarray:
     return labels
 
 
+# ── Elbow method ──────────────────────────────────────────────────────────────
+
+def _inertia(vecs: np.ndarray, labels: np.ndarray, k: int) -> float:
+    """Within-cluster sum of squared distances from each point to its centroid."""
+    total = 0.0
+    for i in range(k):
+        members = vecs[labels == i]
+        if len(members):
+            total += float(((members - members.mean(axis=0)) ** 2).sum())
+    return total
+
+
+def _find_k(vecs: np.ndarray) -> int:
+    """
+    Run k-means for k=2..max_k and return the k at the elbow:
+    the first k where adding one more cluster gives less than 10%
+    of the total possible inertia reduction.
+    """
+    n = len(vecs)
+    if n <= 3:
+        return min(2, n)
+
+    max_k = min(12, n // 2)
+    if max_k < 2:
+        return 2
+
+    inertias = []
+    for k in range(2, max_k + 1):
+        labels = _kmeans(vecs, k, iterations=15)
+        inertias.append(_inertia(vecs, labels, k))
+
+    if len(inertias) == 1:
+        return 2
+
+    total_gain = inertias[0] - inertias[-1]
+    if total_gain == 0:
+        return 2
+
+    # improvements[i] = gain from k=i+2 to k=i+3
+    improvements = [inertias[i] - inertias[i + 1] for i in range(len(inertias) - 1)]
+    for i, imp in enumerate(improvements):
+        if imp / total_gain < 0.10:
+            return i + 2  # stop at k=i+2; adding k=i+3 wasn't worth it
+
+    return max_k
+
+
 # ── Cluster naming ─────────────────────────────────────────────────────────────
 
 def _name_cluster(descriptions: list[str]) -> str:
@@ -86,13 +135,7 @@ def organise(user_id: str = Depends(_get_user_id)):
         return JSONResponse(content={"clusters": []})
 
     vecs = np.array([s["vec"] for s in screenshots], dtype=np.float32)
-    n = len(screenshots)
-    k = max(2, min(8, n // 5))
-
-    # Edge case: fewer items than clusters
-    if n < k:
-        k = n
-
+    k = _find_k(vecs)
     labels = _kmeans(vecs, k)
 
     # Build clusters
