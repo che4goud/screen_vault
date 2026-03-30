@@ -30,3 +30,12 @@ export interface Filters {
   dateTo: string
   tag: string
 }
+
+export interface Cluster {
+  name: string
+  screenshots: Screenshot[]
+}
+
+export interface OrganiseResponse {
+  clusters: Cluster[]
+}

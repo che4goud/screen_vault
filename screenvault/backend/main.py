@@ -19,6 +19,7 @@ from database import init_db
 from worker import get_queue
 from routes.ingest import router as ingest_router
 from routes.search import router as search_router
+from routes.organise import router as organise_router
 
 STORAGE_DIR = os.path.expanduser(os.getenv("STORAGE_DIR", "~/.screenvault"))
 THUMBNAILS_DIR = os.path.join(STORAGE_DIR, "thumbnails")
@@ -59,6 +60,7 @@ app.mount("/thumbnails", StaticFiles(directory=THUMBNAILS_DIR), name="thumbnails
 # Routes
 app.include_router(ingest_router, tags=["Ingestion"])
 app.include_router(search_router, tags=["Search"])
+app.include_router(organise_router, tags=["Organise"])
 
 
 @app.get("/health")

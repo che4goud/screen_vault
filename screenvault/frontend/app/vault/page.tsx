@@ -6,15 +6,17 @@ import { Sparkles } from "lucide-react"
 
 import SearchBar from "@/components/SearchBar"
 import ResultsGrid from "@/components/ResultsGrid"
+import OrganisedView from "@/components/OrganisedView"
 import ImageModal from "@/components/ImageModal"
-import { searchScreenshots, getAllScreenshots, syncScreenshots, fetchSummary } from "@/lib/api"
+import { searchScreenshots, getAllScreenshots, syncScreenshots, fetchSummary, fetchOrganised } from "@/lib/api"
 import { useDebounce } from "@/lib/useDebounce"
-import type { Screenshot, SearchResponse, SummaryResponse } from "@/types"
+import type { Screenshot, SearchResponse, SummaryResponse, OrganiseResponse } from "@/types"
 
 export default function Home() {
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Screenshot | null>(null)
+  const [organised, setOrganised] = useState(false)
 
   const debouncedQuery = useDebounce(query, 400)
 
@@ -38,6 +40,13 @@ export default function Home() {
     { revalidateOnFocus: false }
   )
 
+  // Organised view — only fetched when toggle is on
+  const { data: organiseData, isLoading: organiseLoading } = useSWR<OrganiseResponse>(
+    organised ? "organise" : null,
+    fetchOrganised,
+    { revalidateOnFocus: false }
+  )
+
   // On mount: scan watch folder and enqueue new screenshots
   useEffect(() => {
     syncScreenshots().catch(() => {})
@@ -53,14 +62,33 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#fdfdfd] selection:bg-black selection:text-white">
       <main className="mx-auto max-w-[1400px] px-6 pt-16 pb-24">
-        {/* Header Section: Search */}
-        <div className="flex flex-col items-center gap-8 mb-16">
+        {/* Header Section: Search + Toggle */}
+        <div className="flex flex-col items-center gap-6 mb-16">
           <div className="w-full max-w-2xl px-4">
             <SearchBar
               value={query}
               onChange={handleQueryChange}
               isLoading={isLoading && !!debouncedQuery}
             />
+          </div>
+
+          <div className="flex items-center glass rounded-full p-1 gap-1">
+            <button
+              onClick={() => setOrganised(false)}
+              className={`px-5 py-1.5 rounded-full text-[13px] font-medium transition-all ${
+                !organised ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              Grid
+            </button>
+            <button
+              onClick={() => setOrganised(true)}
+              className={`px-5 py-1.5 rounded-full text-[13px] font-medium transition-all ${
+                organised ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              Organised
+            </button>
           </div>
         </div>
 
@@ -71,7 +99,7 @@ export default function Home() {
             </div>
           )}
 
-          {isSearching && summaryData?.summary && (
+          {!organised && isSearching && summaryData?.summary && (
             <div className="mx-auto max-w-2xl glass px-8 py-5 rounded-2xl border border-gray-100 mb-8">
               <div className="flex items-start gap-3">
                 <Sparkles className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
@@ -80,15 +108,23 @@ export default function Home() {
             </div>
           )}
 
-          <ResultsGrid
-            results={data?.results ?? []}
-            total={data?.total ?? 0}
-            query={debouncedQuery}
-            isLoading={isLoading}
-            onSelect={setSelected}
-          />
+          {organised ? (
+            <OrganisedView
+              clusters={organiseData?.clusters ?? []}
+              isLoading={organiseLoading}
+              onSelect={setSelected}
+            />
+          ) : (
+            <ResultsGrid
+              results={data?.results ?? []}
+              total={data?.total ?? 0}
+              query={debouncedQuery}
+              isLoading={isLoading}
+              onSelect={setSelected}
+            />
+          )}
 
-          {totalPages > 1 && (
+          {!organised && totalPages > 1 && (
             <div className="mt-20 flex items-center justify-center gap-8">
               <button
                 disabled={page === 1}

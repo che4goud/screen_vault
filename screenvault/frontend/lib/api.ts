@@ -1,4 +1,4 @@
-import type { SearchResponse, SummaryResponse } from "@/types"
+import type { SearchResponse, SummaryResponse, OrganiseResponse } from "@/types"
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
@@ -45,6 +45,14 @@ export async function fetchSummary(query: string): Promise<SummaryResponse> {
     headers: { "X-User-Id": USER_ID },
   })
   if (!res.ok) return { summary: "" }
+  return res.json()
+}
+
+export async function fetchOrganised(): Promise<OrganiseResponse> {
+  const res = await fetch(`${BASE_URL}/organise`, {
+    headers: { "X-User-Id": USER_ID },
+  })
+  if (!res.ok) return { clusters: [] }
   return res.json()
 }
 
