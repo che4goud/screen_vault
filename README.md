@@ -83,11 +83,22 @@ Open [http://localhost:3000/vault](http://localhost:3000/vault).
 
 ## Usage
 
-1. Drop screenshots into `~/Desktop/ScreenVault_Screenshots`
-2. The watcher picks them up automatically and processes them in the background
-3. Search your library at `http://localhost:3000/vault`
+### Point macOS screenshots at ScreenVault
 
-Screenshots are also synced on every page load, so you can drop files in and refresh to trigger processing.
+The best experience is to set your Mac's default screenshot save location to the ScreenVault watch folder, so every screenshot you take is automatically picked up and searchable.
+
+1. Press **Cmd + Shift + 5** to open the Screenshot toolbar
+2. Click **Options**
+3. Under *Save to*, click **Other Location…**
+4. Navigate to `~/Desktop/ScreenVault_Screenshots` and click **Choose**
+
+From now on every screenshot you take (Cmd+Shift+3, Cmd+Shift+4, Cmd+Shift+5) saves directly into ScreenVault and is processed automatically in the background.
+
+> You can also drop existing screenshots into `~/Desktop/ScreenVault_Screenshots` at any time — they will be picked up on the next page load.
+
+### Search
+
+Open [http://localhost:3000/vault](http://localhost:3000/vault) and search in natural language — *"Chelsea badge"*, *"invoice from March"*, *"dark mode settings screen"*.
 
 ---
 
