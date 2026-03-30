@@ -1,7 +1,8 @@
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 python-multipart==0.0.9      # required for FastAPI file uploads
-anthropic==0.25.0
+google-genai>=1.0.0          # Gemini vision + text-embedding-004
+numpy>=1.26.0                # cosine similarity computation
 Pillow==10.3.0               # thumbnail generation
 ocrmac==1.0.1                # Apple Vision OCR wrapper (macOS only)
 python-dotenv==1.0.1

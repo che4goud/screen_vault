@@ -6,7 +6,7 @@ import sqlite3
 import os
 from contextlib import contextmanager
 
-DB_PATH = os.getenv("DB_PATH", os.path.expanduser("~/.screenvault/db.sqlite"))
+DB_PATH = os.path.expanduser(os.getenv("DB_PATH", "~/.screenvault/db.sqlite"))
 
 
 def get_connection() -> sqlite3.Connection:
@@ -54,6 +54,7 @@ def init_db():
                 ocr_text      TEXT,
                 description   TEXT,
                 tags          TEXT DEFAULT '[]',
+                embedding     TEXT,
                 status        TEXT NOT NULL DEFAULT 'pending',
                 created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
             );
@@ -85,6 +86,12 @@ def init_db():
                 DELETE FROM screenshots_fts WHERE rowid = old.id;
             END;
         """)
+        # Migration: add embedding column to existing databases (no-op if already present)
+        try:
+            conn.execute("ALTER TABLE screenshots ADD COLUMN embedding TEXT")
+        except Exception:
+            pass
+
     print(f"[db] Initialised at {DB_PATH}")
 
 

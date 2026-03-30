@@ -1,169 +1,113 @@
-# ScreenVault — Project Context for Claude
+# CLAUDE.md
 
-## Role
-You are a **SaaS developer** working on ScreenVault — a paid Mac app that automatically ingests screenshots, extracts text via OCR, generates AI descriptions using Claude, and makes everything instantly searchable. Think like a product engineer: balance shipping speed with code quality, keep the architecture simple until complexity is justified, and always consider the end-user experience.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Product Summary
-ScreenVault watches the user's Mac for new screenshots, processes them through a pipeline (OCR + Claude AI description + auto-tagging), stores everything in a local SQLite database, and exposes a fast search UI. It is a subscription SaaS — users pay $8/month for the cloud-processed AI tier.
+## What This Is
+
+ScreenVault is a Mac screenshot ingestion and semantic search app. It watches a folder for new screenshots, runs them through a pipeline (OCR → Gemini vision description → auto-tags → embedding), stores everything in SQLite, and serves a Next.js search UI.
+
+## Development Commands
+
+```bash
+# Start everything (recommended) — backend + watcher in one command
+cd screenvault && ./start.sh
+
+# Backend only (with hot-reload)
+cd screenvault/backend && uvicorn main:app --reload --port 8000
+
+# Frontend — must use production build (npm run dev uses Turbopack which crashes on Apple Silicon)
+cd screenvault/frontend && npm run build && npm start
+
+# One-time setup: create dev user in DB
+cd screenvault/backend && python seed_user.py
+
+# Backfill embeddings for screenshots processed before the Gemini pipeline
+cd screenvault/backend && python backfill_embeddings.py
+
+# Inspect the database
+sqlite3 ~/.screenvault/db.sqlite "SELECT id, filename, substr(description,1,60), embedding IS NOT NULL FROM screenshots ORDER BY id DESC;"
+```
 
 ## Architecture
 
 ```
-agent/          Mac-side daemon — watches for new screenshots, uploads to backend
-backend/        FastAPI — ingestion pipeline, search API, job queue
-frontend/       Next.js + Tailwind — search UI
-storage/        Local vault — originals + thumbnails (never stored on server)
+screenvault/
+  agent/      Mac watcher — polls ~/Desktop/ScreenVault_Screenshots, POSTs new files to /ingest
+  backend/    FastAPI — ingestion queue, Gemini pipeline, semantic search
+  frontend/   Next.js (production build only) — search UI
 ```
 
-**Data flow:**
+**Ingestion flow:**
 ```
-Screenshot saved → agent/watcher.py → POST /ingest → worker.py → pipeline.py
-                                                                    ├── OCR (Apple Vision / ocrmac)
-                                                                    ├── Description (Claude API)
-                                                                    └── SQLite (FTS5 index)
-                                                      GET /search ← frontend search bar
+New file in watch folder
+  → POST /ingest  (agent/watcher.py or POST /sync on page load)
+  → worker.py     (async queue, max 5 concurrent)
+  → pipeline.py   OCR (ocrmac/Apple Vision)
+                  generate_description() → Gemini 2.0 Flash vision
+                  generate_tags()        → Gemini 2.0 Flash text
+                  generate_embedding()   → gemini-embedding-2-preview (3072-dim)
+  → SQLite        screenshots table, embedding stored as JSON TEXT
 ```
 
-## Tech Stack
+**Search flow:**
+```
+GET /search?q=...
+  → embed query with gemini-embedding-2-preview
+  → load all rows WHERE embedding IS NOT NULL
+  → cosine similarity (numpy, in-process)
+  → filter score >= 0.40, sort descending, paginate
+  → return JSON
 
-| Layer | Tech | Why |
-|---|---|---|
-| Backend | Python + FastAPI | Fast to build, async-ready, great for ML/API work |
-| Database | SQLite + FTS5 | Zero infra, built-in full-text search, sufficient for single-user scale |
-| Queue | In-process async queue (worker.py) | No Redis dependency in Phase 1 |
-| OCR | ocrmac (Apple Vision) | Free, local, accurate, no API cost |
-| AI descriptions | Claude claude-sonnet-4-6 | Best vision understanding, we control the API key |
-| Frontend | Next.js + Tailwind + SWR | Fast to build, good DX, SWR handles caching/debounce |
-| Auth (Phase 3) | Supabase Auth | Managed, JWT, free tier generous |
-| Payments (Phase 4) | Stripe | Industry standard, great webhooks |
+GET /screenshots  → browse all, newest first (no embedding required)
+POST /sync        → called by frontend on every page load; scans WATCH_DIR, enqueues new files
+```
 
 ## Key Files
 
 | File | Purpose |
 |---|---|
-| `backend/pipeline.py` | Core processing: copy → thumbnail → OCR → Claude → DB |
-| `backend/worker.py` | Async job queue — receives jobs from agent, runs pipeline |
-| `backend/database.py` | SQLite schema, FTS5 triggers, connection context manager |
-| `backend/routes/ingest.py` | POST /ingest — validates upload, enqueues job |
-| `backend/routes/search.py` | GET /search — FTS5 BM25 query, paginated results |
-| `backend/main.py` | FastAPI app, CORS, static file serving for thumbnails |
-| `agent/watcher.py` | watchdog FSEvents watcher, uploads new screenshots |
-| `agent/cli.py` | CLI: `screenvault search`, `screenvault status` |
-| `frontend/app/page.tsx` | Main search page — debounced search + filters + grid |
-| `frontend/components/` | SearchBar, FilterSidebar, ResultsGrid, ScreenshotCard, ImageModal |
-
-## Coding Conventions
-- Python: snake_case, type hints on all function signatures, docstrings on public functions
-- TypeScript: functional components, no class components, props interfaces above each component
-- All DB writes wrapped in `with db() as conn:` transaction context
-- Never store image data in the database — only file paths
-- Environment variables via `.env` / `.env.local` — never hardcoded
-- ANTHROPIC_API_KEY is a backend-only secret — never exposed to frontend
+| `backend/pipeline.py` | Full processing pipeline — all Gemini calls live here |
+| `backend/routes/ingest.py` | POST /ingest (file upload), POST /sync (folder scan on page load) |
+| `backend/routes/search.py` | GET /search (cosine similarity), GET /screenshots (browse all) |
+| `backend/database.py` | Schema, `db()` context manager, migration guard for embedding column |
+| `backend/worker.py` | Async job queue; `Job` dataclass carries `original_filename` |
+| `backend/main.py` | FastAPI app entry — `load_dotenv()` must be first import |
+| `frontend/app/page.tsx` | Main page — calls `/sync` on mount, SWR polls while processing |
+| `frontend/lib/api.ts` | All backend API calls; `thumbnailUrl()` maps file paths to `/thumbnails/` URLs |
 
 ## Environment Variables
 
-**Backend (.env)**
+**Backend (`backend/.env`)**
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_API_KEY=...
 DB_PATH=~/.screenvault/db.sqlite
 STORAGE_DIR=~/.screenvault
+WATCH_DIR=~/Desktop/ScreenVault_Screenshots
 ```
 
-**Frontend (.env.local)**
+All four path vars use literal `~` which must be expanded with `os.path.expanduser()` — `os.getenv()` alone will not expand them. `load_dotenv()` in `main.py` must run before any module-level constants are set in `database.py` or `pipeline.py`.
+
+**Frontend (`frontend/.env.local`)**
 ```
 NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_USER_ID=dev-user-001      # replaced by JWT in Phase 3
-STORAGE_DIR=/Users/Shared/.screenvault
+NEXT_PUBLIC_USER_ID=dev-user-001
 ```
 
-## Development Commands
+## Critical Gotchas
 
-```bash
-# Backend
-cd backend && uvicorn main:app --reload --port 8000
+- **`npm run dev` is broken** on Apple Silicon (Turbopack crash). Always use `npm run build && npm start`. Rebuild after any frontend code change.
+- **`load_dotenv()` position matters** — it must be the very first call in `main.py`, before `from database import ...` and `from routes import ...`, because those modules set `DB_PATH`/`STORAGE_DIR` as module-level constants at import time.
+- **Tilde paths** — `DB_PATH`, `STORAGE_DIR`, `WATCH_DIR` from `.env` are literal strings like `"~/.screenvault"`. Always wrap with `os.path.expanduser()`.
+- **FTS5 table is kept but not queried** — `screenshots_fts` and its 3 triggers still exist in the schema and fire on INSERT/UPDATE/DELETE. The `/search` route no longer queries it (uses cosine similarity instead). Don't drop it without understanding the trigger chain.
+- **Embedding model** — `models/gemini-embedding-2-preview` (3072-dim). Use `task_type="SEMANTIC_SIMILARITY"` for both document and query embedding.
+- **Search threshold** — `MIN_SCORE = 0.40` in `routes/search.py`. Results below this are dropped entirely.
+- **Filename preservation** — `Job.original_filename` threads the real filename through the queue so `pipeline.py` can call `copy_to_vault(dest_name=filename)` instead of using the temp file's name.
 
-# Frontend
-cd frontend && npm run dev
+## Auth (Phase 1)
 
-# Agent (file watcher)
-cd agent && python watcher.py
+All endpoints require `X-User-Id` header. The only valid value in dev is `dev-user-001` (created by `seed_user.py`). Phase 3 will replace this with JWT.
 
-# Seed dev user
-cd backend && python seed_user.py
+## Roadmap State
 
-# Init DB manually
-cd backend && python database.py
-```
-
----
-
-## Build Progress
-
-### Phase 0 — Foundation ✅
-- Monorepo structure: `/backend`, `/agent`, `/frontend`, `/storage`
-- Database schema with FTS5 virtual table and sync triggers
-- `.env.example` and all config in place
-
-### Phase 1 — Ingestion Pipeline ✅
-- `pipeline.py` — full screenshot processing (copy → thumbnail → OCR → Claude → tags → DB)
-- `worker.py` — async job queue with retry logic
-- `routes/ingest.py` — POST /ingest endpoint with validation
-- `agent/watcher.py` — FSEvents file watcher using watchdog
-- `agent/cli.py` — CLI commands: search, status, backfill
-
-### Phase 2 — Search UI ✅
-- `routes/search.py` — FTS5 BM25 search with filters (date range, tag), pagination
-- `frontend/` — Next.js app with SearchBar, FilterSidebar, ResultsGrid, ScreenshotCard, ImageModal
-- Debounced search (400ms), skeleton loading states, error handling
-- "Open in Preview" via macOS `open` command through Next.js API route
-
-### Phase 3 — Auth + User Accounts 🔜
-- Supabase Auth integration (email + password)
-- JWT middleware on all backend routes
-- Row-level security (users see only their own screenshots)
-- `screenvault login` CLI command
-
-### Phase 4 — Payments + Plans 🔜
-- Stripe subscriptions ($8/month Pro)
-- Free tier: 100 screenshots/month cap
-- Webhook handler for subscription lifecycle
-- Billing page on frontend
-
-### Phase 5 — Mac App 🔜
-- SwiftUI or Tauri menubar app
-- Replaces CLI agent
-- Auto-updates via Sparkle
-
-### Phase 6 — Privacy + Security 🔜
-- Images never stored on server (in-memory only)
-- HTTPS enforcement, rate limiting
-- Privacy policy page
-- GDPR delete-my-data endpoint
-
-### Phase 7 — Growth Features 🔜
-- Backfill existing screenshots
-- Smart folders (saved searches)
-- Export to CSV/ZIP
-- iOS app (iCloud sync)
-- Team plan
-
----
-
-## Business Model
-
-| Plan | Price | Limit | Notes |
-|---|---|---|---|
-| Free | $0 | 100 screenshots/month | OCR only, no AI description |
-| Pro | $8/month | Unlimited | AI descriptions + tags |
-| Pro Private | $15/month | Unlimited | Local model, no cloud |
-
-**Unit economics (Pro):** ~$1.80/month API cost at 20 screenshots/day → ~$6.20 margin per user.
-
----
-
-## Decisions Made
-- **SQLite over Postgres for Phase 1** — single-user local app, no infra overhead. Will migrate when multi-tenancy is needed.
-- **No Redis in Phase 1** — in-process async queue is sufficient. Add Redis + RQ when job volume justifies it.
-- **No embeddings/vector search** — FTS5 is sufficient because Claude descriptions are rich enough to bridge vocabulary gaps. Revisit if users report search misses.
-- **Images never leave server memory** — processed in-memory, immediately discarded. Fundamental privacy guarantee.
-- **User brings Anthropic API key (dev)** — for Phase 1 dev, the key is set in backend `.env`. In production (Phase 4+), we run a shared key and absorb cost via subscription margin.
+- **Done:** ingestion pipeline, Gemini vision + embeddings, cosine similarity search, auto-sync on page load, thumbnail serving
+- **Next:** Phase 3 (Supabase Auth + JWT), Phase 4 (Stripe payments)

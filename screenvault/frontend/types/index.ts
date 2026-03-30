@@ -7,8 +7,9 @@ export interface Screenshot {
   description: string
   ocr_text?: string
   tags: string // JSON array string e.g. '["invoice","finance"]'
-  snippet?: string // highlighted FTS5 snippet
-  rank?: number
+  snippet?: string // highlighted FTS5 snippet (legacy)
+  rank?: number    // FTS5 BM25 rank (legacy)
+  score?: number   // cosine similarity score 0-1
 }
 
 export interface SearchResponse {
@@ -17,6 +18,7 @@ export interface SearchResponse {
   page: number
   per_page: number
   results: Screenshot[]
+  summary?: string  // LLM-generated summary of top results (hybrid search)
 }
 
 export interface Filters {

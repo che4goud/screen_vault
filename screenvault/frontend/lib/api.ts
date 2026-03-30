@@ -22,22 +22,29 @@ export async function searchScreenshots(
   page = 1,
   filters?: { dateFrom?: string; dateTo?: string; tag?: string }
 ): Promise<SearchResponse> {
-  const params = new URLSearchParams({ page: String(page) })
-  if (query) params.set("q", query)
+  const params = new URLSearchParams({ q: query, page: String(page) })
   if (filters?.dateFrom) params.set("date_from", filters.dateFrom)
   if (filters?.dateTo) params.set("date_to", filters.dateTo)
   if (filters?.tag) params.set("tag", filters.tag)
 
-  const endpoint = query ? "search" : "screenshots"
-  const res = await fetch(`${BASE_URL}/${endpoint}?${params}`, {
+  const res = await fetch(`${BASE_URL}/search?${params}`, {
     headers: { "X-User-Id": USER_ID },
   })
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail?.[0]?.msg ?? err.detail ?? `Search failed: ${res.status}`)
+    throw new Error(err.detail ?? `Search failed: ${res.status}`)
   }
 
+  return res.json()
+}
+
+export async function syncScreenshots(): Promise<{ queued: number; skipped: number }> {
+  const res = await fetch(`${BASE_URL}/sync`, {
+    method: "POST",
+    headers: { "X-User-Id": USER_ID },
+  })
+  if (!res.ok) return { queued: 0, skipped: 0 }
   return res.json()
 }
 

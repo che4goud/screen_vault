@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import useSWR from "swr"
-import { RotateCcw } from "lucide-react"
+import { RotateCcw, Sparkles } from "lucide-react"
 
 import SearchBar from "@/components/SearchBar"
 import ResultsGrid from "@/components/ResultsGrid"
 import ImageModal from "@/components/ImageModal"
-import { searchScreenshots, getAllScreenshots, parseTags } from "@/lib/api"
+import { searchScreenshots, getAllScreenshots, parseTags, syncScreenshots } from "@/lib/api"
 import { useDebounce } from "@/lib/useDebounce"
 import type { Filters, Screenshot, SearchResponse } from "@/types"
 
@@ -18,6 +18,9 @@ export default function Home() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Screenshot | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const processingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevTotal = useRef<number>(0)
 
   const debouncedQuery = useDebounce(query, 400)
 
@@ -30,8 +33,34 @@ export default function Home() {
     () => isSearching
       ? searchScreenshots(debouncedQuery, page, filters)
       : getAllScreenshots(page),
-    { keepPreviousData: true }
+    { keepPreviousData: true, refreshInterval: isProcessing ? 3000 : 0 }
   )
+
+  // On mount: scan watch folder and enqueue new screenshots
+  useEffect(() => {
+    syncScreenshots()
+      .then(({ queued }) => {
+        if (queued > 0) {
+          setIsProcessing(true)
+          // Safety cap: stop polling after 90 seconds
+          processingTimer.current = setTimeout(() => setIsProcessing(false), 90_000)
+        }
+      })
+      .catch(() => {})
+    return () => { if (processingTimer.current) clearTimeout(processingTimer.current) }
+  }, [])
+
+  // Stop polling once new results appear in the grid
+  useEffect(() => {
+    if (!isProcessing) return
+    const total = data?.total ?? 0
+    if (total > prevTotal.current) {
+      prevTotal.current = total
+      if (processingTimer.current) clearTimeout(processingTimer.current)
+      // Poll a little longer to catch any remaining items, then stop
+      processingTimer.current = setTimeout(() => setIsProcessing(false), 6000)
+    }
+  }, [data?.total, isProcessing])
 
   const handleQueryChange = useCallback((v: string) => {
     setQuery(v)
@@ -95,12 +124,19 @@ export default function Home() {
               ))}
             </div>
 
-            <button 
-              onClick={() => mutate()}
-              className="p-3 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-900 transition-all"
-            >
-              <RotateCcw className={`h-6 w-6 ${isLoading ? 'animate-spin' : ''}`} />
-            </button>
+            <div className="flex items-center gap-3">
+              {isProcessing && (
+                <span className="text-[12px] text-gray-400 animate-pulse">
+                  Processing new screenshots…
+                </span>
+              )}
+              <button
+                onClick={() => mutate()}
+                className="p-3 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-900 transition-all"
+              >
+                <RotateCcw className={`h-6 w-6 ${isLoading || isProcessing ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -111,6 +147,15 @@ export default function Home() {
             </div>
           )}
           
+          {isSearching && data?.summary && (
+            <div className="mx-auto max-w-2xl glass px-8 py-5 rounded-2xl border border-gray-100 mb-8">
+              <div className="flex items-start gap-3">
+                <Sparkles className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                <p className="text-[14px] text-gray-600 leading-relaxed">{data.summary}</p>
+              </div>
+            </div>
+          )}
+
           <ResultsGrid
             results={data?.results ?? []}
             total={data?.total ?? 0}

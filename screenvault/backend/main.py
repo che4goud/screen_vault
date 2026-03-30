@@ -8,6 +8,9 @@ Run with:
 import os
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,7 +20,7 @@ from worker import get_queue
 from routes.ingest import router as ingest_router
 from routes.search import router as search_router
 
-STORAGE_DIR = os.getenv("STORAGE_DIR", os.path.expanduser("~/.screenvault"))
+STORAGE_DIR = os.path.expanduser(os.getenv("STORAGE_DIR", "~/.screenvault"))
 THUMBNAILS_DIR = os.path.join(STORAGE_DIR, "thumbnails")
 
 

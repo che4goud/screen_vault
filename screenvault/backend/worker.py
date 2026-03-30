@@ -20,6 +20,7 @@ MAX_WORKERS = int(__import__("os").getenv("MAX_WORKERS", "5"))
 class Job:
     user_id: str
     src_path: str
+    original_filename: str = None
     submitted_at: datetime = None
 
     def __post_init__(self):
@@ -85,7 +86,7 @@ class IngestionQueue:
                 # so it doesn't block the event loop
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
-                    None, _run_pipeline, job.user_id, job.src_path
+                    None, _run_pipeline, job.user_id, job.src_path, job.original_filename
                 )
                 self._stats["processed"] += 1
                 print(f"[worker] Done: {job.src_path} → id={result['id']}")
@@ -98,10 +99,10 @@ class IngestionQueue:
                 self._queue.task_done()
 
 
-def _run_pipeline(user_id: str, src_path: str) -> dict:
+def _run_pipeline(user_id: str, src_path: str, original_filename: str = None) -> dict:
     """Synchronous wrapper around pipeline.process_screenshot for thread pool execution."""
     from pipeline import process_screenshot
-    return process_screenshot(user_id, src_path)
+    return process_screenshot(user_id, src_path, original_filename=original_filename)
 
 
 # ── Singleton queue instance shared across the app ────────────────────────────

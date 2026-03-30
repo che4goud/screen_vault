@@ -15,6 +15,9 @@ from fastapi.responses import JSONResponse
 from worker import get_queue, Job
 from database import db
 
+WATCH_DIR_DEFAULT = "~/Desktop"
+_ALLOWED_EXTS = {".png", ".jpg", ".jpeg"}
+
 router = APIRouter()
 
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg"}
@@ -73,7 +76,7 @@ async def ingest_screenshot(
 
     # Enqueue for async processing
     queue = get_queue()
-    job = Job(user_id=user_id, src_path=tmp_path)
+    job = Job(user_id=user_id, src_path=tmp_path, original_filename=file.filename)
     await queue.enqueue(job)
 
     return JSONResponse(
@@ -92,3 +95,44 @@ async def queue_status(user_id: str = Depends(_get_user_id)):
     """Returns current queue stats — useful for the Mac agent status bar."""
     queue = get_queue()
     return queue.stats
+
+
+@router.post("/sync")
+async def sync_watch_folder(user_id: str = Depends(_get_user_id)):
+    """
+    Scan the watch folder for new screenshots and enqueue any not yet in the vault.
+    Called automatically by the frontend on page load.
+    """
+    watch_dir = os.path.expanduser(os.getenv("WATCH_DIR", WATCH_DIR_DEFAULT))
+
+    if not os.path.isdir(watch_dir):
+        return JSONResponse(content={"queued": 0, "skipped": 0, "watch_dir": watch_dir})
+
+    # Filenames already known for this user (processed or in-flight)
+    with db() as conn:
+        known = {row[0] for row in conn.execute(
+            "SELECT filename FROM screenshots WHERE user_id = ?", (user_id,)
+        ).fetchall()}
+
+    queue = get_queue()
+    queued = 0
+    skipped = 0
+
+    for entry in sorted(Path(watch_dir).iterdir()):
+        if not entry.is_file():
+            continue
+        if entry.suffix.lower() not in _ALLOWED_EXTS:
+            continue
+        if entry.stat().st_size == 0:
+            continue
+        if entry.name in known:
+            skipped += 1
+            continue
+
+        job = Job(user_id=user_id, src_path=str(entry), original_filename=entry.name)
+        await queue.enqueue(job)
+        known.add(entry.name)  # prevent double-queuing within same scan
+        queued += 1
+
+    print(f"[sync] queued={queued} skipped={skipped} dir={watch_dir}")
+    return JSONResponse(content={"queued": queued, "skipped": skipped})

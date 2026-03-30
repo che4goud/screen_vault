@@ -5,28 +5,33 @@ Steps:
   1. Copy original to vault storage
   2. Generate thumbnail
   3. Run OCR via Apple Vision (ocrmac)
-  4. Generate description via Claude API
-  5. Persist everything to SQLite
+  4. Generate description via Gemini 2.0 Flash (vision)
+  5. Generate tags via Gemini 2.0 Flash
+  6. Generate embedding via text-embedding-004
+  7. Persist everything to SQLite
 """
 
 import os
 import shutil
 import json
-import base64
 from datetime import datetime
 from pathlib import Path
 
-import anthropic
+from google import genai
+from google.genai import types as genai_types
 from PIL import Image
 
 from database import db
 
-STORAGE_DIR = os.getenv("STORAGE_DIR", os.path.expanduser("~/.screenvault"))
+STORAGE_DIR = os.path.expanduser(os.getenv("STORAGE_DIR", "~/.screenvault"))
 ORIGINALS_DIR = os.path.join(STORAGE_DIR, "originals")
 THUMBNAILS_DIR = os.path.join(STORAGE_DIR, "thumbnails")
 THUMBNAIL_SIZE = (400, 400)
 
-CLAUDE_MODEL = "claude-sonnet-4-6"
+GEMINI_MODEL = "gemini-2.5-flash"
+EMBED_MODEL = "models/gemini-embedding-2-preview"
+MAX_EMBED_CHARS = 4000
+
 DESCRIPTION_PROMPT = (
     "Describe this screenshot concisely in 2-3 sentences. Include: "
     "what application or website is visible, what the content is about, "
@@ -42,10 +47,10 @@ def _ensure_dirs():
     os.makedirs(THUMBNAILS_DIR, exist_ok=True)
 
 
-def copy_to_vault(src_path: str) -> str:
+def copy_to_vault(src_path: str, dest_name: str = None) -> str:
     """Copy the original screenshot into the vault and return the new path."""
     _ensure_dirs()
-    filename = Path(src_path).name
+    filename = dest_name or Path(src_path).name
     dest = os.path.join(ORIGINALS_DIR, filename)
     # Avoid overwriting if a file with the same name already exists
     if os.path.exists(dest):
@@ -88,83 +93,97 @@ def extract_text(image_path: str) -> str:
         return ""
 
 
-# ── Claude description ─────────────────────────────────────────────────────────
+# ── Gemini description ─────────────────────────────────────────────────────────
 
 def generate_description(image_path: str) -> str:
-    """Send the image to Claude and return a plain-text description."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    """Send the image to Gemini 2.0 Flash and return a plain-text description."""
+    api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise EnvironmentError("ANTHROPIC_API_KEY is not set")
+        raise EnvironmentError("GOOGLE_API_KEY is not set")
+
+    ext = Path(image_path).suffix.lower()
+    mime_type = "image/png" if ext == ".png" else "image/jpeg"
 
     with open(image_path, "rb") as f:
-        image_data = base64.standard_b64encode(f.read()).decode("utf-8")
+        image_bytes = f.read()
 
-    # Detect media type from extension
-    ext = Path(image_path).suffix.lower()
-    media_type = "image/png" if ext == ".png" else "image/jpeg"
-
-    client = anthropic.Anthropic(api_key=api_key)
-    message = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=256,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": image_data,
-                        },
-                    },
-                    {"type": "text", "text": DESCRIPTION_PROMPT},
-                ],
-            }
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=[
+            genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            DESCRIPTION_PROMPT,
         ],
     )
-    return message.content[0].text.strip()
+    return response.text.strip()
 
 
 # ── Auto-tagging ───────────────────────────────────────────────────────────────
 
 def generate_tags(description: str, ocr_text: str) -> list[str]:
     """
-    Ask Claude to suggest 3-5 short tags based on the description and OCR text.
+    Ask Gemini to suggest 3-5 short tags based on the description and OCR text.
     Returns a list of lowercase tag strings.
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         return []
 
-    combined = f"Description: {description}\n\nOCR text: {ocr_text[:500]}"
-    client = anthropic.Anthropic(api_key=api_key)
-    message = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=64,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"{combined}\n\n"
-                    "Based on the above, suggest 3-5 concise lowercase tags "
-                    "(e.g. invoice, zoom-call, figma, finance, email). "
-                    "Return only a JSON array of strings, nothing else."
-                ),
-            }
-        ],
+    client = genai.Client(api_key=api_key)
+    prompt = (
+        f"Description: {description}\n\nOCR text: {ocr_text[:500]}\n\n"
+        "Based on the above, suggest 3-5 concise lowercase tags "
+        "(e.g. invoice, zoom-call, figma, finance, email). "
+        "Return only a JSON array of strings, nothing else."
+    )
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
     )
     try:
-        tags = json.loads(message.content[0].text.strip())
+        text = response.text.strip()
+        # Strip markdown fences if present (gemini-2.5-flash wraps JSON in ```json ... ```)
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        tags = json.loads(text.strip())
         return [str(t).lower() for t in tags if isinstance(t, str)]
     except Exception:
         return []
 
 
+# ── Embedding ──────────────────────────────────────────────────────────────────
+
+def generate_embedding(ocr_text: str, description: str) -> list[float] | None:
+    """
+    Embed the combined OCR text and description using text-embedding-004 (768-dim).
+    Returns None if the API is unavailable or the text is empty.
+    """
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        return None
+
+    combined = f"{ocr_text} {description}".strip()[:MAX_EMBED_CHARS]
+    if not combined:
+        return None
+
+    try:
+        client = genai.Client(api_key=api_key)
+        result = client.models.embed_content(
+            model=EMBED_MODEL,
+            contents=combined,
+            config=genai_types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY"),
+        )
+        return result.embeddings[0].values
+    except Exception as e:
+        print(f"[pipeline] Embedding failed: {e.__class__.__name__}: {e}")
+        return None
+
+
 # ── Main entry point ───────────────────────────────────────────────────────────
 
-def process_screenshot(user_id: str, src_path: str) -> dict:
+def process_screenshot(user_id: str, src_path: str, original_filename: str = None) -> dict:
     """
     Full pipeline for one screenshot. Returns a dict with all stored fields.
 
@@ -174,11 +193,11 @@ def process_screenshot(user_id: str, src_path: str) -> dict:
     if not os.path.exists(src_path):
         raise FileNotFoundError(f"Screenshot not found: {src_path}")
 
-    filename = Path(src_path).name
+    filename = original_filename or Path(src_path).name
     print(f"[pipeline] Processing {filename}")
 
-    # 1. Copy to vault
-    vault_path = copy_to_vault(src_path)
+    # 1. Copy to vault (preserve original filename if provided)
+    vault_path = copy_to_vault(src_path, dest_name=filename)
     print(f"[pipeline] Copied to {vault_path}")
 
     # 2. Thumbnail
@@ -189,15 +208,27 @@ def process_screenshot(user_id: str, src_path: str) -> dict:
     ocr_text = extract_text(vault_path)
     print(f"[pipeline] OCR extracted {len(ocr_text)} chars")
 
-    # 4. Claude description
-    description = generate_description(vault_path)
-    print(f"[pipeline] Description: {description[:80]}...")
+    # 4. Gemini description (graceful fallback if API unavailable)
+    try:
+        description = generate_description(vault_path)
+        print(f"[pipeline] Description: {description[:80]}...")
+    except Exception as e:
+        print(f"[pipeline] Gemini unavailable ({e.__class__.__name__}), using OCR text as description")
+        description = ocr_text[:300] if ocr_text else f"Screenshot from {filename}"
 
     # 5. Tags
-    tags = generate_tags(description, ocr_text)
+    try:
+        tags = generate_tags(description, ocr_text)
+    except Exception:
+        tags = []
     print(f"[pipeline] Tags: {tags}")
 
-    # 6. Persist to database
+    # 6. Embedding
+    embedding = generate_embedding(ocr_text, description)
+    embedding_json = json.dumps(embedding) if embedding is not None else None
+    print(f"[pipeline] Embedding: {'ok (' + str(len(embedding)) + '-dim)' if embedding else 'unavailable'}")
+
+    # 7. Persist to database
     captured_at = _parse_mac_timestamp(filename)
 
     with db() as conn:
@@ -205,8 +236,8 @@ def process_screenshot(user_id: str, src_path: str) -> dict:
             """
             INSERT INTO screenshots
                 (user_id, filename, filepath, thumbnail, captured_at,
-                 ocr_text, description, tags, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'done')
+                 ocr_text, description, tags, embedding, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'done')
             """,
             (
                 user_id,
@@ -217,6 +248,7 @@ def process_screenshot(user_id: str, src_path: str) -> dict:
                 ocr_text,
                 description,
                 json.dumps(tags),
+                embedding_json,
             ),
         )
         screenshot_id = cursor.lastrowid
