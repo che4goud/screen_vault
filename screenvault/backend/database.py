@@ -59,8 +59,9 @@ def init_db():
                 created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
-            -- FTS5 virtual table for full-text search across descriptions and OCR text
+            -- FTS5 virtual table for full-text search across filename, descriptions and OCR text
             CREATE VIRTUAL TABLE IF NOT EXISTS screenshots_fts USING fts5(
+                filename,
                 ocr_text,
                 description,
                 tags,
@@ -70,13 +71,14 @@ def init_db():
 
             -- Keep FTS index in sync when a screenshot row is updated
             CREATE TRIGGER IF NOT EXISTS screenshots_ai AFTER INSERT ON screenshots BEGIN
-                INSERT INTO screenshots_fts(rowid, ocr_text, description, tags)
-                VALUES (new.id, new.ocr_text, new.description, new.tags);
+                INSERT INTO screenshots_fts(rowid, filename, ocr_text, description, tags)
+                VALUES (new.id, new.filename, new.ocr_text, new.description, new.tags);
             END;
 
             CREATE TRIGGER IF NOT EXISTS screenshots_au AFTER UPDATE ON screenshots BEGIN
                 UPDATE screenshots_fts
-                SET ocr_text = new.ocr_text,
+                SET filename = new.filename,
+                    ocr_text = new.ocr_text,
                     description = new.description,
                     tags = new.tags
                 WHERE rowid = new.id;
@@ -101,6 +103,47 @@ def init_db():
             conn.execute("ALTER TABLE screenshots ADD COLUMN page_count INTEGER")
         except Exception:
             pass
+
+    # Migration: rebuild FTS5 index to include filename column (for title-based search)
+    needs_rebuild = False
+    try:
+        with db() as conn:
+            conn.execute("SELECT filename FROM screenshots_fts LIMIT 1")
+    except Exception:
+        needs_rebuild = True
+
+    if needs_rebuild:
+        conn = get_connection()
+        try:
+            for stmt in [
+                "DROP TRIGGER IF EXISTS screenshots_ai",
+                "DROP TRIGGER IF EXISTS screenshots_au",
+                "DROP TRIGGER IF EXISTS screenshots_ad",
+                "DROP TABLE IF EXISTS screenshots_fts",
+                """CREATE VIRTUAL TABLE screenshots_fts USING fts5(
+                    filename, ocr_text, description, tags,
+                    content='screenshots', content_rowid='id'
+                )""",
+                """CREATE TRIGGER screenshots_ai AFTER INSERT ON screenshots BEGIN
+                    INSERT INTO screenshots_fts(rowid, filename, ocr_text, description, tags)
+                    VALUES (new.id, new.filename, new.ocr_text, new.description, new.tags);
+                END""",
+                """CREATE TRIGGER screenshots_au AFTER UPDATE ON screenshots BEGIN
+                    UPDATE screenshots_fts
+                    SET filename = new.filename, ocr_text = new.ocr_text,
+                        description = new.description, tags = new.tags
+                    WHERE rowid = new.id;
+                END""",
+                """CREATE TRIGGER screenshots_ad AFTER DELETE ON screenshots BEGIN
+                    DELETE FROM screenshots_fts WHERE rowid = old.id;
+                END""",
+                """INSERT INTO screenshots_fts(rowid, filename, ocr_text, description, tags)
+                    SELECT id, filename, ocr_text, description, tags FROM screenshots""",
+            ]:
+                conn.execute(stmt)
+            conn.commit()
+        finally:
+            conn.close()
 
     print(f"[db] Initialised at {DB_PATH}")
 

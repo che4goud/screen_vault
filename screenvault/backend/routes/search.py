@@ -3,7 +3,7 @@ routes/search.py — GET /search, GET /summary, GET /screenshots endpoints.
 
 Search uses a three-layer hybrid approach:
   1. Semantic:  cosine similarity over gemini-embedding-2-preview embeddings
-  2. Keyword:   FTS5 BM25 over description, ocr_text, and tags
+  2. Keyword:   FTS5 BM25 over filename, description, ocr_text, and tags
   3. Fusion:    Reciprocal Rank Fusion merges both ranked lists
 
 Summary is decoupled into GET /summary so search results are returned
@@ -166,7 +166,7 @@ def _semantic_search(query_vec: list[float], user_id: str) -> list[tuple[float, 
 def _fts_search(query: str, user_id: str, limit: int = 50) -> list[dict]:
     """
     BM25 full-text search over the screenshots_fts virtual table
-    (columns: description, ocr_text, tags — kept in sync by DB triggers).
+    (columns: filename, description, ocr_text, tags — kept in sync by DB triggers).
     Returns items ordered by FTS5 rank (best first).
     Degrades gracefully to [] on FTS5 parse errors (e.g. special characters).
     """
