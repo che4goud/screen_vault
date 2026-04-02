@@ -1,16 +1,16 @@
 """
-watcher.py — Mac agent that watches for new screenshots and uploads them.
+watcher.py — Mac agent that watches for new files and uploads them.
 
 Run with:
     python watcher.py
 
-Watches the configured screenshots folder (default: ~/Desktop) and uploads
-any new PNG/JPEG files matching the macOS screenshot naming pattern to the
-ScreenVault backend for processing.
+Watches the configured folder (default: ~/Desktop/ScreenVault_Screenshots) and
+uploads any new image or document files to the ScreenVault backend for processing.
+
+Supported: PNG, JPEG, PDF, DOCX, XLSX, PPTX
 """
 
 import os
-import re
 import time
 import requests
 from pathlib import Path
@@ -24,15 +24,21 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 USER_ID = os.getenv("SCREENVAULT_USER_ID", "")
 UPLOAD_TIMEOUT = int(os.getenv("UPLOAD_TIMEOUT", "30"))
 
-# macOS screenshot filename pattern: 'Screenshot 2024-03-15 at 10.30.45 AM.png'
-SCREENSHOT_PATTERN = re.compile(
-    r"^Screenshot \d{4}-\d{2}-\d{2} at \d+\.\d+\.\d+ (AM|PM)\.(png|jpg|jpeg)$",
-    re.IGNORECASE,
-)
+ALLOWED_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".pdf", ".docx", ".xlsx", ".pptx"})
+
+_MIME_TYPES = {
+    ".png":  "image/png",
+    ".jpg":  "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".pdf":  "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
 
 
-def is_screenshot(filename: str) -> bool:
-    return bool(SCREENSHOT_PATTERN.match(filename))
+def is_supported_file(filename: str) -> bool:
+    return Path(filename).suffix.lower() in ALLOWED_EXTENSIONS
 
 
 def upload(filepath: str):
@@ -61,7 +67,7 @@ def upload(filepath: str):
 
 def _mime_type(filepath: str) -> str:
     ext = Path(filepath).suffix.lower()
-    return "image/png" if ext == ".png" else "image/jpeg"
+    return _MIME_TYPES.get(ext, "application/octet-stream")
 
 
 class ScreenshotHandler(FileSystemEventHandler):
@@ -73,7 +79,7 @@ class ScreenshotHandler(FileSystemEventHandler):
         filepath = event.src_path
         filename = Path(filepath).name
 
-        if not is_screenshot(filename):
+        if not is_supported_file(filename):
             return
 
         # Small delay to ensure macOS has finished writing the file

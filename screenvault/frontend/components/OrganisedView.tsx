@@ -2,6 +2,7 @@
 
 import type { Cluster, Screenshot } from "@/types"
 import ScreenshotCard from "./ScreenshotCard"
+import DocumentCard from "./DocumentCard"
 import { Loader2 } from "lucide-react"
 
 interface Props {
@@ -40,7 +41,10 @@ export default function OrganisedView({ clusters, isLoading, onSelect }: Props) 
           <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-8">
             {cluster.screenshots.map((s) => (
               <div key={s.id} className="break-inside-avoid mb-6">
-                <ScreenshotCard screenshot={s} onClick={onSelect} />
+                {s.type === "document"
+                  ? <DocumentCard item={s} onClick={onSelect} />
+                  : <ScreenshotCard screenshot={s} onClick={onSelect} />
+                }
               </div>
             ))}
           </div>

@@ -16,12 +16,12 @@ from worker import get_queue, Job
 from database import db
 
 WATCH_DIR_DEFAULT = "~/Desktop"
-_ALLOWED_EXTS = {".png", ".jpg", ".jpeg"}
 
 router = APIRouter()
 
-ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg"}
-MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "20"))
+ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf", ".docx", ".xlsx", ".pptx"}
+_ALLOWED_EXTS = ALLOWED_EXTENSIONS  # alias used by /sync
+MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "50"))
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
@@ -54,7 +54,7 @@ async def ingest_screenshot(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{ext}'. Must be PNG or JPEG."
+            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
         )
 
     # Read and validate file size

@@ -99,7 +99,7 @@ def _get_cached_screenshots(user_id: str) -> list[dict]:
         rows = conn.execute(
             """
             SELECT id, filename, filepath, thumbnail, captured_at,
-                   description, tags, embedding
+                   description, tags, embedding, type, page_count
             FROM screenshots
             WHERE user_id = ? AND status = 'done' AND embedding IS NOT NULL
             """,
@@ -120,6 +120,8 @@ def _get_cached_screenshots(user_id: str) -> list[dict]:
             "captured_at": row["captured_at"],
             "description": row["description"],
             "tags": row["tags"],
+            "type": row["type"] if "type" in row.keys() else "screenshot",
+            "page_count": row["page_count"] if "page_count" in row.keys() else None,
             "vec": vec,
         })
 
@@ -153,6 +155,8 @@ def _semantic_search(query_vec: list[float], user_id: str) -> list[tuple[float, 
             "captured_at": item["captured_at"],
             "description": item["description"],
             "tags": item["tags"],
+            "type": item.get("type", "screenshot"),
+            "page_count": item.get("page_count"),
             "score": round(s, 4),
         }))
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -273,7 +277,8 @@ def get_all_screenshots(
     with db() as conn:
         rows = conn.execute(
             """
-            SELECT id, filename, filepath, thumbnail, captured_at, description, tags
+            SELECT id, filename, filepath, thumbnail, captured_at, description, tags,
+                   type, page_count
             FROM screenshots
             WHERE user_id = ?
               AND status = 'done'

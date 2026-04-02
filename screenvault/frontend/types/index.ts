@@ -10,6 +10,8 @@ export interface Screenshot {
   snippet?: string // highlighted FTS5 snippet (legacy)
   rank?: number    // FTS5 BM25 rank (legacy)
   score?: number   // cosine similarity score 0-1
+  type?: "screenshot" | "document"
+  page_count?: number | null
 }
 
 export interface SearchResponse {

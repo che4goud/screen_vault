@@ -1,9 +1,21 @@
 "use client"
 
 import { useEffect } from "react"
-import Image from "next/image"
 import type { Screenshot } from "@/types"
 import { thumbnailUrl, parseTags } from "@/lib/api"
+import { FileText } from "lucide-react"
+
+const DOC_COLORS: Record<string, string> = {
+  ".pdf":  "bg-red-50 text-red-400",
+  ".docx": "bg-blue-50 text-blue-400",
+  ".xlsx": "bg-green-50 text-green-500",
+  ".pptx": "bg-orange-50 text-orange-400",
+}
+
+function getExt(filename: string): string {
+  const parts = filename.split(".")
+  return parts.length > 1 ? "." + parts.pop()!.toLowerCase() : ""
+}
 
 interface Props {
   screenshot: Screenshot | null
@@ -36,14 +48,23 @@ export default function ImageModal({ screenshot, onClose }: Props) {
         className="relative flex w-full max-w-5xl md:h-[85vh] flex-col md:flex-row overflow-hidden rounded-[32px] bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Left Side: Image */}
+        {/* Left Side: Image or Document icon */}
         <div className="relative flex-1 bg-[#f0f0f0] flex items-center justify-center overflow-hidden min-h-[300px]">
-          <img
-            src={thumbnailUrl(screenshot.thumbnail)}
-            alt={screenshot.description ?? screenshot.filename}
-            className="w-full h-full object-contain"
-          />
-          <button 
+          {screenshot.type === "document" ? (
+            <div className={`flex flex-col items-center gap-4 p-12 rounded-[24px] ${DOC_COLORS[getExt(screenshot.filename)] ?? "bg-gray-50 text-gray-400"}`}>
+              <FileText className="h-20 w-20" />
+              <span className="text-[13px] font-semibold tracking-widest uppercase opacity-60">
+                {getExt(screenshot.filename).slice(1).toUpperCase()}
+              </span>
+            </div>
+          ) : (
+            <img
+              src={thumbnailUrl(screenshot.thumbnail)}
+              alt={screenshot.description ?? screenshot.filename}
+              className="w-full h-full object-contain"
+            />
+          )}
+          <button
             onClick={onClose}
             className="absolute top-4 left-4 h-10 w-10 flex items-center justify-center rounded-full bg-white/90 shadow-md md:hidden hover:bg-white transition-colors"
           >
@@ -90,7 +111,9 @@ export default function ImageModal({ screenshot, onClose }: Props) {
 
             {screenshot.ocr_text && (
               <div className="mb-8">
-                <h3 className="text-lg font-bold text-gray-900 mb-3">Extracted Text</h3>
+                <h3 className="text-lg font-bold text-gray-900 mb-3">
+                  {screenshot.type === "document" ? "Document Text" : "Extracted Text"}
+                </h3>
                 <div className="bg-gray-50 rounded-2xl p-4 text-[14px] font-mono text-gray-700 leading-relaxed max-h-[200px] overflow-y-auto whitespace-pre-wrap">
                    {screenshot.ocr_text}
                 </div>
@@ -121,7 +144,7 @@ export default function ImageModal({ screenshot, onClose }: Props) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Open in Preview
+                {screenshot.type === "document" ? "Open Document" : "Open in Preview"}
               </a>
               <button 
                 onClick={onClose}

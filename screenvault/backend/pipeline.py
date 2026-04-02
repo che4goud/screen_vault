@@ -26,7 +26,9 @@ from database import db
 STORAGE_DIR = os.path.expanduser(os.getenv("STORAGE_DIR", "~/.screenvault"))
 ORIGINALS_DIR = os.path.join(STORAGE_DIR, "originals")
 THUMBNAILS_DIR = os.path.join(STORAGE_DIR, "thumbnails")
+DOCS_DIR = os.path.join(STORAGE_DIR, "documents")
 THUMBNAIL_SIZE = (400, 400)
+MAX_EXTRACT_CHARS = 8000
 
 GEMINI_MODEL = "gemini-2.5-flash"
 EMBED_MODEL = "models/gemini-embedding-2-preview"
@@ -263,6 +265,135 @@ def process_screenshot(user_id: str, src_path: str, original_filename: str = Non
         "ocr_text": ocr_text,
         "description": description,
         "tags": tags,
+        "status": "done",
+    }
+
+
+# ── Document pipeline ──────────────────────────────────────────────────────────
+
+DOCUMENT_DESCRIPTION_PROMPT = (
+    "You are given extracted text from a document. "
+    "Summarise it in 2-3 sentences covering: document type, main topic, "
+    "and any key facts, names, dates, or amounts present. "
+    "Be specific and factual — this summary will be used for search."
+)
+
+
+def _ensure_docs_dir():
+    os.makedirs(DOCS_DIR, exist_ok=True)
+
+
+def copy_document_to_vault(src_path: str, dest_name: str = None) -> str:
+    """Copy the original document into vault/documents/ and return the new path."""
+    _ensure_docs_dir()
+    filename = dest_name or Path(src_path).name
+    dest = os.path.join(DOCS_DIR, filename)
+    if os.path.exists(dest):
+        stem = Path(filename).stem
+        ext = Path(filename).suffix
+        dest = os.path.join(DOCS_DIR, f"{stem}_{int(datetime.now().timestamp())}{ext}")
+    shutil.copy2(src_path, dest)
+    return dest
+
+
+def generate_document_description(extracted_text: str) -> str:
+    """Text-only Gemini call to summarise extracted document content."""
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise EnvironmentError("GOOGLE_API_KEY is not set")
+    client = genai.Client(api_key=api_key)
+    prompt = f"{DOCUMENT_DESCRIPTION_PROMPT}\n\nDocument text:\n{extracted_text[:MAX_EXTRACT_CHARS]}"
+    response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+    return response.text.strip()
+
+
+def process_document(user_id: str, src_path: str, original_filename: str = None) -> dict:
+    """
+    Full pipeline for one document (PDF/DOCX/XLSX/PPTX).
+
+    Steps:
+      1. Copy to vault/documents/
+      2. Extract text via document_extractor
+      3. Generate description (text-only Gemini call, no vision)
+      4. Generate tags (reuses existing generate_tags)
+      5. Generate embedding (reuses existing generate_embedding)
+      6. Persist with type='document', thumbnail=NULL
+    """
+    if not os.path.exists(src_path):
+        raise FileNotFoundError(f"Document not found: {src_path}")
+
+    from document_extractor import extract_document
+
+    filename = original_filename or Path(src_path).name
+    ext = Path(filename).suffix.lower()
+    print(f"[pipeline] Processing document: {filename}")
+
+    # 1. Copy to vault
+    vault_path = copy_document_to_vault(src_path, dest_name=filename)
+    print(f"[pipeline] Document copied to {vault_path}")
+
+    # 2. Extract text
+    extracted_text, page_count = extract_document(vault_path)
+    print(f"[pipeline] Extracted {len(extracted_text)} chars, {page_count} pages/sheets")
+
+    # 3. Description
+    try:
+        if extracted_text.strip():
+            description = generate_document_description(extracted_text)
+        else:
+            description = f"{ext.upper().lstrip('.')} document: {filename}"
+        print(f"[pipeline] Description: {description[:80]}...")
+    except Exception as e:
+        print(f"[pipeline] Description failed ({e.__class__.__name__}), using filename")
+        description = f"{ext.upper().lstrip('.')} document: {filename}"
+
+    # 4. Tags (reuse existing function)
+    try:
+        tags = generate_tags(description, extracted_text[:500])
+    except Exception:
+        tags = []
+    print(f"[pipeline] Tags: {tags}")
+
+    # 5. Embedding (reuse existing function)
+    embedding = generate_embedding(extracted_text, description)
+    embedding_json = json.dumps(embedding) if embedding is not None else None
+    print(f"[pipeline] Embedding: {'ok (' + str(len(embedding)) + '-dim)' if embedding else 'unavailable'}")
+
+    # 6. Persist — thumbnail NULL, type='document'
+    with db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO screenshots
+                (user_id, filename, filepath, thumbnail, captured_at,
+                 ocr_text, description, tags, embedding, status, type, page_count)
+            VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, 'done', 'document', ?)
+            """,
+            (
+                user_id,
+                filename,
+                vault_path,
+                datetime.now().isoformat(),
+                extracted_text,
+                description,
+                json.dumps(tags),
+                embedding_json,
+                page_count,
+            ),
+        )
+        doc_id = cursor.lastrowid
+
+    print(f"[pipeline] Saved document id={doc_id}")
+    return {
+        "id": doc_id,
+        "filename": filename,
+        "filepath": vault_path,
+        "thumbnail": None,
+        "captured_at": datetime.now().isoformat(),
+        "ocr_text": extracted_text,
+        "description": description,
+        "tags": tags,
+        "type": "document",
+        "page_count": page_count,
         "status": "done",
     }
 

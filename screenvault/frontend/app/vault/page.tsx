@@ -17,6 +17,7 @@ export default function Home() {
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Screenshot | null>(null)
   const [organised, setOrganised] = useState(false)
+  const [typeFilter, setTypeFilter] = useState<"all" | "screenshot" | "document">("all")
 
   const debouncedQuery = useDebounce(query, 400)
 
@@ -57,6 +58,10 @@ export default function Home() {
     setPage(1)
   }, [])
 
+  const filteredResults = (data?.results ?? []).filter(r =>
+    typeFilter === "all" ? true : (r.type ?? "screenshot") === typeFilter
+  )
+
   const totalPages = data ? Math.ceil(data.total / data.per_page) : 0
 
   return (
@@ -72,23 +77,39 @@ export default function Home() {
             />
           </div>
 
-          <div className="flex items-center glass rounded-full p-1 gap-1">
-            <button
-              onClick={() => setOrganised(false)}
-              className={`px-5 py-1.5 rounded-full text-[13px] font-medium transition-all ${
-                !organised ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              Grid
-            </button>
-            <button
-              onClick={() => setOrganised(true)}
-              className={`px-5 py-1.5 rounded-full text-[13px] font-medium transition-all ${
-                organised ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              Organised
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center glass rounded-full p-1 gap-1">
+              <button
+                onClick={() => setOrganised(false)}
+                className={`px-5 py-1.5 rounded-full text-[13px] font-medium transition-all ${
+                  !organised ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
+                }`}
+              >
+                Grid
+              </button>
+              <button
+                onClick={() => setOrganised(true)}
+                className={`px-5 py-1.5 rounded-full text-[13px] font-medium transition-all ${
+                  organised ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
+                }`}
+              >
+                Organised
+              </button>
+            </div>
+
+            <div className="flex items-center glass rounded-full p-1 gap-1">
+              {(["all", "screenshot", "document"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => { setTypeFilter(t); setPage(1) }}
+                  className={`px-5 py-1.5 rounded-full text-[13px] font-medium transition-all ${
+                    typeFilter === t ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
+                  }`}
+                >
+                  {t === "all" ? "All" : t === "screenshot" ? "Screenshots" : "Documents"}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -116,8 +137,8 @@ export default function Home() {
             />
           ) : (
             <ResultsGrid
-              results={data?.results ?? []}
-              total={data?.total ?? 0}
+              results={filteredResults}
+              total={filteredResults.length}
               query={debouncedQuery}
               isLoading={isLoading}
               onSelect={setSelected}

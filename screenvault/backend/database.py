@@ -91,6 +91,16 @@ def init_db():
             conn.execute("ALTER TABLE screenshots ADD COLUMN embedding TEXT")
         except Exception:
             pass
+        # Migration: add type column to classify screenshots vs documents
+        try:
+            conn.execute("ALTER TABLE screenshots ADD COLUMN type TEXT NOT NULL DEFAULT 'screenshot'")
+        except Exception:
+            pass
+        # Migration: add page_count for multi-page documents (NULL for screenshots)
+        try:
+            conn.execute("ALTER TABLE screenshots ADD COLUMN page_count INTEGER")
+        except Exception:
+            pass
 
     print(f"[db] Initialised at {DB_PATH}")
 

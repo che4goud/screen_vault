@@ -2,6 +2,7 @@
 
 import type { Screenshot } from "@/types"
 import ScreenshotCard from "./ScreenshotCard"
+import DocumentCard from "./DocumentCard"
 import { Loader2, Image as ImageIcon } from "lucide-react"
 
 interface Props {
@@ -50,14 +51,17 @@ export default function ResultsGrid({ results, total, query, isLoading, onSelect
     <div className="space-y-12">
       <div className="flex items-center justify-center">
         <p className="text-[14px] font-medium text-gray-400 tracking-widest uppercase bg-gray-50 px-4 py-1 rounded-full">
-          {query ? `${total} Visuals Found` : `Recent Visuals`}
+          {query ? `${total} Items Found` : `Recent Items`}
         </p>
       </div>
       
       <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-8 space-y-8">
         {results.map((s) => (
           <div key={s.id} className="break-inside-avoid">
-            <ScreenshotCard screenshot={s} onClick={onSelect} />
+            {s.type === "document"
+              ? <DocumentCard item={s} onClick={onSelect} />
+              : <ScreenshotCard screenshot={s} onClick={onSelect} />
+            }
           </div>
         ))}
       </div>

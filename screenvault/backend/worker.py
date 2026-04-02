@@ -102,10 +102,19 @@ class IngestionQueue:
                 self._queue.task_done()
 
 
+_DOC_EXTENSIONS = frozenset({".pdf", ".docx", ".xlsx", ".pptx"})
+
+
 def _run_pipeline(user_id: str, src_path: str, original_filename: str = None) -> dict:
-    """Synchronous wrapper around pipeline.process_screenshot for thread pool execution."""
-    from pipeline import process_screenshot
-    return process_screenshot(user_id, src_path, original_filename=original_filename)
+    """Route to screenshot or document pipeline based on file extension."""
+    from pathlib import Path
+    ext = Path(original_filename or src_path).suffix.lower()
+    if ext in _DOC_EXTENSIONS:
+        from pipeline import process_document
+        return process_document(user_id, src_path, original_filename=original_filename)
+    else:
+        from pipeline import process_screenshot
+        return process_screenshot(user_id, src_path, original_filename=original_filename)
 
 
 # ── Singleton queue instance shared across the app ────────────────────────────
